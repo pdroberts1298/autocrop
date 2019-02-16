@@ -197,9 +197,6 @@ if __name__ == '__main__':
         # read image and convert to gray
         img = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
 
-        cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
-        cv2.waitKey(0)
-
         rawRect = findExposureBounds(img, showOutputWindow=hasDisplay)
 
         # Outputs for Lightroom
