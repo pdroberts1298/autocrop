@@ -18,3 +18,24 @@ This works most of the time, but fails on images that threshold to many smaller 
 - Lightroom on Windows (OSX should work too with some tweaks)
 - OpenCV 2.x and Python installed in the Windows 10 Linux Subsystem, because Python+OpenCV on Windows is a pain to set up
 - Xming (X server for Windows) running to allow windows from the Python script
+
+## Notes on the Lightroom Lua API
+
+Lightroom's API is very poorly documented (unless I'm missing some newer docs that Adobe has locked away behind a login). It doesn't appear to be intended for anything other than exporting to custom APIs - seems strange considering how extensible Photoshop is with scripts and plugins.
+
+Images can be cropped through the Lightroom Lua API using the parameters `CropLeft`, `CropRight`, `CropTop`, and `CropBottom`. These aren't listed on the `LrDevelopController` page of the SDK docs, but are listed in the docs under `LrPhoto:getDevelopSettings`. Note that the sides (top, right, etc) are *always* relative to the orientation `AB`, not necessarily the top, right, etc of the exported image.
+
+The `orientation` param is a two character string that represents the two corners at the top of the image:
+
+```
+AB:         BC:       CD:         DA:
+
+A-----B     B---C     C-----D     D---A
+|     |     |   |     |     |     |   |
+D-----C     |   |     B-----A     |   |
+            A---B                 C---B
+
+(Each of these is rotated anti-clockwise by 90 degrees)
+```
+
+In my testing, `orientation` couldn't be read using `LrDevelopController:getValue()`, but I could retrieve it using `LrPhoto:photo:getDevelopSettings`.
