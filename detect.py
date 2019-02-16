@@ -306,9 +306,6 @@ if __name__ == '__main__':
             rotation
         ]
 
-        for v in cropData:
-            print v
-
         with file(filename + ".txt", 'w') as out:
             out.write("\r\n".join(str(x) for x in cropData))
 

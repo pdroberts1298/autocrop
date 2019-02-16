@@ -71,14 +71,11 @@ end
 
 function rotateCropForOrientation(crop, orientation)
 
-  log:trace("Orientation: " .. orientation)
-
   if orientation == "AB" then
     -- No adjustments needed: this is the orientation of the data
     return rawCrop
 
   elseif orientation == "BC" then
-    log:trace("in BC")
     return {
       right = crop.bottom,
       bottom = 1 - crop.left,
@@ -88,7 +85,6 @@ function rotateCropForOrientation(crop, orientation)
     }
 
   elseif orientation == "CD" then
-    log:trace("in CD")
     return {
       bottom = 1 - crop.top,
       left = 1 - crop.right,
@@ -98,7 +94,6 @@ function rotateCropForOrientation(crop, orientation)
     }
 
   elseif orientation == "DA" then
-    log:trace("in DA")
     return {
       left = 1 - crop.bottom,
       top = crop.left,
