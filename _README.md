@@ -35,7 +35,7 @@ AB:         BC:       CD:         DA:
 A-----B     B---C     C-----D     D---A
 |     |     |   |     |     |     |   |
 D-----C     |   |     B-----A     |   |
-            A---B                 C---B
+            A---D                 C---B
 
 (Each of these is rotated anti-clockwise by 90 degrees)
 ```
