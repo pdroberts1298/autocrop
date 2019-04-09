@@ -4,6 +4,18 @@ import math
 import numpy as np
 import os
 
+# Detect OpenCV 2.x vs 3.x
+from pkg_resources import parse_version
+IS_OPENCV_2 = parse_version(cv2.__version__) < parse_version('3.0.0')
+
+# Alias BoxPoints as this lives in a different place in OpenCV 2 and 3
+if IS_OPENCV_2:
+    BoxPoints = cv2.cv.BoxPoints
+else:
+    BoxPoints = cv2.boxPoints
+
+
+# Detection settings
 MAX_COVERAGE = 0.95
 INSET_PERCENT = 0.005
 
@@ -28,8 +40,10 @@ def getRect(img, ignoreMask, lowerThresh, upperThresh):
     largestArea = 0
 
     # Find external contours of all shapes
-    contours,_ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    # _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if IS_OPENCV_2:
+        contours,_ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
@@ -158,8 +172,7 @@ def findExposureBounds(img, showOutputWindow=False):
             if rect is not None:
                 # Get a rectangle around the contour
 
-                rectPoints = cv2.cv.BoxPoints(rect)
-                # rectPoints = cv2.boxPoints(largestRect)
+                rectPoints = BoxPoints(rect)
                 rectPoints = np.int0(rectPoints)
 
                 cv2.drawContours(debugImg, [rectPoints], -1, debugLineColour, 3)
@@ -222,7 +235,7 @@ if __name__ == '__main__':
             boxHeight = rect[1][1]
 
              # box = cv2.boxPoints(rect)
-            box = np.int0(cv2.cv.BoxPoints(rect))
+            box = np.int0(BoxPoints(rect))
 
             # Caclulate white balance from average colour outside of frame?
             # # Create a mask that excludes areas that are probably the directly visible light source
@@ -281,11 +294,11 @@ if __name__ == '__main__':
             cropTop = (max(top)) / float(imgHeight)
 
             # Draw original detected area
-            rawBox = np.int0(cv2.cv.BoxPoints(rawRect))
+            rawBox = np.int0(BoxPoints(rawRect))
             cv2.drawContours(img, [rawBox], -1, (255, 0, 0), 1)
 
             # Draw inset area
-            insetBox = np.int0(cv2.cv.BoxPoints(insetRect))
+            insetBox = np.int0(BoxPoints(insetRect))
             cv2.drawContours(img, [insetBox], -1, (0, 255, 255), 1)
 
             # Draw adjusted aspect ratio area
