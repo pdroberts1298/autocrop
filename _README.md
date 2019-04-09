@@ -13,7 +13,7 @@ The detection works, but it could be better. Currently it does a single pass:
 
 This works most of the time, but fails on images that threshold to many smaller contours that don't join (eg. one in each corner).
 
-[Images of this running can be seen on Hackaday.io](https://hackaday.io/project/162842-35mm-flim-negative-scanning/log/159448-auto-cropping-scanned-negatives-with-opencv)
+[Images of this running can be seen on Hackaday.io](https://hackaday.io/project/162842-35mm-flim-negative-scanning/log/159448-auto-cropping-scanned-negatives-with-opencv). Note that some modifications have been made since the Hackaday post. The exact code demoed in the post can be seen [here](https://gist.github.com/stecman/91cb5d28d330550a1dc56fa29215cb85/e7c28270f8b1de08213afb20e4e94043d761bcfe).
 
 ## Setup
 

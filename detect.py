@@ -3,6 +3,7 @@ import copy
 import math
 import numpy as np
 import os
+import sys
 
 # Detect OpenCV 2.x vs 3.x
 from pkg_resources import parse_version
@@ -16,26 +17,23 @@ else:
 
 
 # Detection settings
-MAX_COVERAGE = 0.95
+MAX_COVERAGE = 0.98
 INSET_PERCENT = 0.005
 
-def getRect(img, ignoreMask, lowerThresh, upperThresh):
-
-    # Threshold the gray image to binarize, and negate it
-    # _, binary = cv2.threshold(img, lowerThresh, upperThresh, cv2.THRESH_BINARY) # THRESH_TOZERO_INV
-    # binary = cv2.bitwise_not(binary)
-
-    _, binary = cv2.threshold(img, lowerThresh, upperThresh, cv2.THRESH_BINARY_INV) # THRESH_TOZERO_INV
+def thresholdImage(img, lowerThresh, ignoreMask):
+    _, binary = cv2.threshold(img, lowerThresh, 255, cv2.THRESH_BINARY_INV) # THRESH_TOZERO_INV
     # binary = cv2.bitwise_not(binary)
 
     binary = cv2.bitwise_and(ignoreMask, binary)
 
     # Prevent tiny outlier collections of pixels spoiling the rect fitting
     kernel = np.ones((5,5),np.uint8)
+    binary = cv2.dilate(binary, kernel, iterations = 3)
     binary = cv2.erode(binary, kernel, iterations = 3)
 
-    thresholdImg = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+    return binary
 
+def findLargestContourRect(binary):
     largestRect = None
     largestArea = 0
 
@@ -53,9 +51,34 @@ def getRect(img, ignoreMask, lowerThresh, upperThresh):
             largestArea = area
             largestRect = cv2.minAreaRect(cnt)
 
-    return largestRect, largestArea, thresholdImg
+    return largestRect, largestArea
+
+def findNonZeroPixelsRect(binary):
+    edges = copy.copy(binary)
+
+    if IS_OPENCV_2:
+        contours,_ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    else:
+        _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    nonZero = cv2.findNonZero(edges)
+
+    if nonZero is None:
+        return None, 0, binary
+
+    rect = cv2.minAreaRect(nonZero)
+
+    area = rect[1][0] * rect[1][1]
+
+    return rect, area
 
 def medianRect(rects):
+    if len(rects) == 0:
+        return None
+
+    # Sort rects by area
+    rects.sort(key=lambda rect: rect[1][0] * rect[1][1])
+
     return (
         (np.median([r[0][0] for r in rects]), np.median([r[0][1] for r in rects])),
         (np.median([r[1][0] for r in rects]), np.median([r[1][1] for r in rects])),
@@ -100,10 +123,13 @@ def correctAspectRatio(rect, targetRatio = 1.5, maxDifference = 0.3):
 
     # Shrink width if the ratio was too wide
     if aspectRatio > targetRatio:
+        print "ratio too large", aspectError
         rectWidth = size[heightDim] * targetRatio
 
     # Shrink height if the ratio was too tall
     elif aspectRatio < targetRatio:
+        print "ratio too small", aspectError
+        # rectWidth = size[heightDim] * targetRatio
         rectHeight = size[widthDim] / targetRatio
 
     # Apply new width/height in the original orientation
@@ -129,67 +155,84 @@ def findExposureBounds(img, showOutputWindow=False):
 
     # Create a mask to ignore the brightest spots
     # These are usually where there is no film covering the light source
-    _, ignoreMask = cv2.threshold(gray, 240, 0, cv2.THRESH_TOZERO)
-    ignoreMask = cv2.bitwise_not(ignoreMask)
+    _, ignoreMask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
 
     # Expand masked out area slightly to include adjacent edges
     kernel = np.ones((3,3),np.uint8)
-    ignoreMask = cv2.erode(ignoreMask, kernel, iterations = 3)
+    ignoreMask = cv2.dilate(ignoreMask, kernel, iterations = 3)
+
+
+    # Create a mask to ignore areas of low saturation
+    # When white balanced against the film stock, this is usually low saturation
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+    hsv = cv2.GaussianBlur(hsv, (5,5), 0)
+
+    satMask = cv2.inRange(hsv, (0, 0, 0), (255, 7, 255))
+
+    # Combine saturation and brightness masks, then flip
+    ignoreMask = cv2.bitwise_or(ignoreMask, satMask)
+    ignoreMask = cv2.bitwise_not(ignoreMask)
 
 
     # Get min/max region of interest areas
     height, width, _  = img.shape
     maxArea = (height * MAX_COVERAGE)  * (width * MAX_COVERAGE)
 
-    lowerThreshold = 0
-    upperThreshold = 220
-    box = None
+    minCaptureArea = maxArea * 0.65
+
+    # algos = [findNonZeroPixelsRect]
+    algos = [findLargestContourRect]
 
     results = []
 
-    while upperThreshold > lowerThreshold:
-        rect, area, debugImg = getRect(gray, ignoreMask, lowerThreshold, upperThreshold)
+    for func in algos:
+        lowerThreshold = 0
+        while lowerThreshold < 240:
+            binary = thresholdImage(gray, lowerThreshold, ignoreMask)
 
-        # Stop once a valid result is returned
-        if area >= maxArea:
-            break
+            debugImg = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
+            rect, area = func(binary)
 
-        if area >= maxArea * 0.55:
-            results.append(rect)
-            lowerThreshold += 1
+            # Stop once a valid result is returned
+            if area >= maxArea:
+                break
 
-            # Draw in green for results that are collected
-            debugLineColour = (0, 255, 0)
+            if area >= minCaptureArea:
+                results.append(rect)
+                lowerThreshold += 5
 
-        else:
-            lowerThreshold += 5
+                # Draw in green for results that are collected
+                debugLineColour = (0, 255, 0)
 
-            # Draw in red for areas that were too small
-            debugLineColour = (0, 0, 255)
+            else:
+                lowerThreshold += 5
+
+                # Draw in red for areas that were too small
+                debugLineColour = (0, 0, 255)
 
 
-        if showOutputWindow:
-            if rect is not None:
-                # Get a rectangle around the contour
+            if showOutputWindow:
+                if rect is not None:
+                    # Get a rectangle around the contour
 
-                rectPoints = BoxPoints(rect)
-                rectPoints = np.int0(rectPoints)
+                    rectPoints = BoxPoints(rect)
+                    rectPoints = np.int0(rectPoints)
 
-                cv2.drawContours(debugImg, [rectPoints], -1, debugLineColour, 3)
+                    cv2.drawContours(debugImg, [rectPoints], -1, debugLineColour, 3)
 
-            # Draw threshold on debug output
-            cv2.putText(
-                img=debugImg,
-                text='Threshold: ' + str(lowerThreshold),
-                org=(20, 30),
-                fontFace=cv2.FONT_HERSHEY_PLAIN,
-                fontScale=2,
-                color=(0, 150, 255),
-                lineType=4
-            )
+                # Draw threshold on debug output
+                cv2.putText(
+                    img=debugImg,
+                    text='Threshold: ' + str(lowerThreshold),
+                    org=(20, 30),
+                    fontFace=cv2.FONT_HERSHEY_PLAIN,
+                    fontScale=2,
+                    color=(0, 150, 255),
+                    lineType=4
+                )
 
-            cv2.imshow('image', cv2.resize(debugImg, (0,0), fx=0.75, fy=0.75) )
-            cv2.waitKey(1)
+                cv2.imshow('image', cv2.resize(debugImg, (0,0), fx=0.75, fy=0.75) )
+                cv2.waitKey(1)
 
     return medianRect(results)
 
@@ -207,8 +250,16 @@ if __name__ == '__main__':
     hasDisplay = os.getenv('DISPLAY') != None
 
     for filename in args.files:
+        if not os.path.exists(filename):
+            print "ERROR:"
+            print "Could not find file '%s'" % filename
+            sys.exit(5)
+
         # read image and convert to gray
         img = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
+
+        # cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
+        # cv2.waitKey(0)
 
         rawRect = findExposureBounds(img, showOutputWindow=hasDisplay)
 
@@ -234,10 +285,9 @@ if __name__ == '__main__':
             boxWidth = rect[1][0]
             boxHeight = rect[1][1]
 
-             # box = cv2.boxPoints(rect)
             box = np.int0(BoxPoints(rect))
 
-            # Caclulate white balance from average colour outside of frame?
+
             # # Create a mask that excludes areas that are probably the directly visible light source
             # _, wbMask = cv2.threshold(gray, 253, 0, cv2.THRESH_TOZERO)
             # wbMask = cv2.bitwise_not(wbMask)
@@ -316,11 +366,14 @@ if __name__ == '__main__':
             rotation
         ]
 
+        for v in cropData:
+            print v
+
         with file(filename + ".txt", 'w') as out:
             out.write("\r\n".join(str(x) for x in cropData))
 
         cv2.imwrite(filename + "-analysis.jpg", img)
 
-        if hasDisplay:
-            cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
-            cv2.waitKey(1000)
+        # if hasDisplay:
+        #     cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
+        #     cv2.waitKey(0)
