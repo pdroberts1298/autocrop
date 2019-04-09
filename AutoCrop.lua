@@ -16,7 +16,14 @@ local log = LrLogger("AutoCrop")
 log:enable("logfile")
 
 -- Global settings
-local detectProgram = LrPathUtils.child(_PLUGIN.path, "detect.py")
+local scriptPath = LrPathUtils.child(_PLUGIN.path, "detect.py")
+
+-- Template string to run Python scripts
+local pythonCommand = "/usr/local/bin/python __ARGS__"
+if WIN_ENV then
+  -- Run Python through the Linux sub-system on Windows
+  pythonCommand = "bash -c 'DISPLAY=:0 python __ARGS__'"
+end
 
 -- Create directory to save temporary exports to
 local imgPreviewPath = LrPathUtils.child(_PLUGIN.path, "render")
@@ -48,7 +55,12 @@ function setCrop(photo, angle, cropLeft, cropRight, cropTop, cropBottom)
 end
 
 -- Convert a Windows absolute path to a Linux Sub-Sytem path
-function lssPath(winPath)
+function fixPath(winPath)
+  -- Do nothing on OSX
+  if MAC_ENV then
+    return winPath
+  end
+
   -- Replace Windows drive with mount point in Linux subsystem
   local path = winPath:gsub("^(.+):", function(c)
   return "/mnt/" .. c:lower()
@@ -165,18 +177,19 @@ function processPhotos(photos)
       local photoPath = rendition.destinationPath
       local dataPath = photoPath .. ".txt"
 
-      local cmd = "bash -c 'DISPLAY=:0 python \"" .. lssPath(detectProgram) .. "\" \"" .. lssPath(photoPath) .. "\"'"
+      -- Build a command line to run a Python script on the exported image
+      local cmd = pythonCommand:gsub("__ARGS__", '"' .. fixPath(scriptPath) .. '" "' .. fixPath(photoPath) .. '"')
       log:trace("Executing: " .. cmd)
 
       exitCode = LrTasks.execute(cmd)
 
       if exitCode ~= 0 then
-        LrDialogs.showError("Detect program returned a non-zero status: " .. exitCode )
+        LrDialogs.showError("The Python script exited with a non-zero status: " .. exitCode .. "\n\nCommand line was:\n" .. cmd )
         break
       end
 
       if LrFileUtils.exists(dataPath) == false then
-        LrDialogs.showError("Detect program exited cleanly, but the output data file was not found:\n\n" .. dataPath)
+        LrDialogs.showError("The Python script exited cleanly, but the output data file was not found:\n\n" .. dataPath)
         break
       end
 
