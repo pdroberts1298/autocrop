@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import cv2
 import copy
 import math
@@ -152,12 +154,12 @@ def correctAspectRatio(rect, targetRatio = 1.5, maxDifference = 0.3):
 
     # Shrink width if the ratio was too wide
     if aspectRatio > targetRatio:
-        print "ratio too large", aspectError
+        print("ratio too large", aspectError)
         rectWidth = size[heightDim] * targetRatio
 
     # Shrink height if the ratio was too tall
     elif aspectRatio < targetRatio:
-        print "ratio too small", aspectError
+        print("ratio too small", aspectError)
         # rectWidth = size[heightDim] * targetRatio
         rectHeight = size[widthDim] / targetRatio
 
@@ -280,8 +282,8 @@ if __name__ == '__main__':
 
     for filename in args.files:
         if not os.path.exists(filename):
-            print "ERROR:"
-            print "Could not find file '%s'" % filename
+            print("ERROR:")
+            print("Could not find file '%s'" % filename)
             sys.exit(5)
 
         # read image and convert to gray
@@ -396,7 +398,7 @@ if __name__ == '__main__':
         ]
 
         for v in cropData:
-            print v
+            print(v)
 
         with file(filename + ".txt", 'w') as out:
             out.write("\r\n".join(str(x) for x in cropData))

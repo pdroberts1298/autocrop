@@ -19,7 +19,8 @@ log:enable("logfile")
 local scriptPath = LrPathUtils.child(_PLUGIN.path, "detect.py")
 
 -- Template string to run Python scripts
-local pythonCommand = "/usr/local/bin/python __ARGS__"
+-- (You may need to modify this to point to the right Python binary)
+local pythonCommand = "python __ARGS__"
 if WIN_ENV then
   -- Run Python through the Linux sub-system on Windows
   pythonCommand = "bash -c 'DISPLAY=:0 python __ARGS__'"
