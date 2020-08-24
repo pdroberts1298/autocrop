@@ -400,7 +400,7 @@ if __name__ == '__main__':
         for v in cropData:
             print(v)
 
-        with file(filename + ".txt", 'w') as out:
+        with open(filename + ".txt", 'w') as out:
             out.write("\r\n".join(str(x) for x in cropData))
 
         cv2.imwrite(filename + "-analysis.jpg", img)
