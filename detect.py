@@ -19,14 +19,11 @@ else:
 
 
 # Detection settings
-MAX_COVERAGE = 0.98
-INSET_PERCENT = 0.005
+MAX_COVERAGE = .98
 
-def thresholdImage(img, lowerThresh, ignoreMask):
+def thresholdImage(img, lowerThresh):#, ignoreMask):
     _, binary = cv2.threshold(img, lowerThresh, 255, cv2.THRESH_BINARY_INV) # THRESH_TOZERO_INV
-    # binary = cv2.bitwise_not(binary)
-
-    binary = cv2.bitwise_and(ignoreMask, binary)
+    #binary = cv2.bitwise_and(ignoreMask, binary)
 
     # Prevent tiny outlier collections of pixels spoiling the rect fitting
     kernel = np.ones((5,5),np.uint8)
@@ -43,7 +40,7 @@ def findLargestContourRect(binary):
     if IS_OPENCV_2:
         contours,_ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     else:
-        _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     for cnt in contours:
         area = cv2.contourArea(cnt)
@@ -61,7 +58,7 @@ def findNonZeroPixelsRect(binary):
     if IS_OPENCV_2:
         contours,_ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     else:
-        _, contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        contours, hierarchy = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     nonZero = cv2.findNonZero(edges)
 
@@ -107,11 +104,19 @@ def medianRect(rects):
 
     # Sort rects by area
     rects.sort(key=lambda rect: rect[1][0] * rect[1][1])
-
+    rotations=[]
+    for r in rects:
+        if r[2] > 45:
+            rotations.append(r[2]-90)
+        if r[2] < -45:
+            rotations.append(r[2]+90)
+        else:
+            rotations.append(r[2])
+    
     median = (
         (np.median([r[0][0] for r in rects]), np.median([r[0][1] for r in rects])),
         (np.median([r[1][0] for r in rects]), np.median([r[1][1] for r in rects])),
-        np.median([r[2] for r in rects])
+        np.median(rotations)
     )
 
     return median
@@ -154,13 +159,10 @@ def correctAspectRatio(rect, targetRatio = 1.5, maxDifference = 0.3):
 
     # Shrink width if the ratio was too wide
     if aspectRatio > targetRatio:
-        print("ratio too large", aspectError)
         rectWidth = size[heightDim] * targetRatio
 
     # Shrink height if the ratio was too tall
     elif aspectRatio < targetRatio:
-        print("ratio too small", aspectError)
-        # rectWidth = size[heightDim] * targetRatio
         rectHeight = size[widthDim] / targetRatio
 
     # Apply new width/height in the original orientation
@@ -177,21 +179,18 @@ def findExposureBounds(img, showOutputWindow=False):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     # Smooth out noise
-    # gray = cv2.GaussianBlur(gray,(5,5),0)
     gray = cv2.bilateralFilter(gray, 11, 17, 17)
 
     # Maximise brightness range
     gray = cv2.equalizeHist(gray)
 
-
     # Create a mask to ignore the brightest spots
     # These are usually where there is no film covering the light source
-    _, ignoreMask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
+    ##_, ignoreMask = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
 
     # Expand masked out area slightly to include adjacent edges
-    kernel = np.ones((3,3),np.uint8)
-    ignoreMask = cv2.dilate(ignoreMask, kernel, iterations = 3)
-
+    ##kernel = np.ones((3,3),np.uint8)
+    ##ignoreMask = cv2.dilate(ignoreMask, kernel, iterations = 3)
 
     # Create a mask to ignore areas of low saturation
     # When white balanced against the film stock, this is usually low saturation
@@ -201,60 +200,54 @@ def findExposureBounds(img, showOutputWindow=False):
     satMask = cv2.inRange(hsv, (0, 0, 0), (255, 7, 255))
 
     # Combine saturation and brightness masks, then flip
-    ignoreMask = cv2.bitwise_or(ignoreMask, satMask)
-    ignoreMask = cv2.bitwise_not(ignoreMask)
-
+    ##ignoreMask = cv2.bitwise_or(ignoreMask, satMask)
+    ##ignoreMask = cv2.bitwise_not(ignoreMask)
 
     # Get min/max region of interest areas
     height, width, _  = img.shape
     maxArea = (height * MAX_COVERAGE)  * (width * MAX_COVERAGE)
 
-    minCaptureArea = maxArea * 0.65
+    minCaptureArea = maxArea * .7
 
-    # algos = [findNonZeroPixelsRect]
+    #algos = [findNonZeroPixelsRect]
     algos = [findLargestContourRect]
-
     results = []
 
     for func in algos:
-        lowerThreshold = 0
-        while lowerThreshold < 240:
-            binary = thresholdImage(gray, lowerThreshold, ignoreMask)
-
+        upperThreshold = 300
+        while upperThreshold > 100:
+            binary = thresholdImage(gray, upperThreshold)#, ignoreMask)
+            
             debugImg = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
             rect, area = func(binary)
 
             # Stop once a valid result is returned
-            if area >= maxArea:
+            if area <= minCaptureArea:
                 break
 
             if area >= minCaptureArea:
                 results.append(rect)
-                lowerThreshold += 5
+                upperThreshold -= 5
 
                 # Draw in green for results that are collected
                 debugLineColour = (0, 255, 0)
 
             else:
-                lowerThreshold += 5
+                upperThreshold += 5
 
                 # Draw in red for areas that were too small
                 debugLineColour = (0, 0, 255)
 
-
             if showOutputWindow:
                 if rect is not None:
-                    # Get a rectangle around the contour
-
                     rectPoints = BoxPoints(rect)
                     rectPoints = np.int0(rectPoints)
-
                     cv2.drawContours(debugImg, [rectPoints], -1, debugLineColour, 3)
 
                 # Draw threshold on debug output
                 cv2.putText(
                     img=debugImg,
-                    text='Threshold: ' + str(lowerThreshold),
+                    text='Threshold: ' + str(upperThreshold),
                     org=(20, 30),
                     fontFace=cv2.FONT_HERSHEY_PLAIN,
                     fontScale=2,
@@ -264,7 +257,7 @@ def findExposureBounds(img, showOutputWindow=False):
 
                 cv2.imshow('image', cv2.resize(debugImg, (0,0), fx=0.75, fy=0.75) )
                 cv2.waitKey(1)
-
+    
     return medianRect(results)
 
 
@@ -289,11 +282,11 @@ if __name__ == '__main__':
         # read image and convert to gray
         img = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
 
-        # cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
-        # cv2.waitKey(0)
+        cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
+        cv2.waitKey(0)
 
         rawRect = findExposureBounds(img, showOutputWindow=hasDisplay)
-
+        print(rawRect)
         # Outputs for Lightroom
         cropLeft = 0
         cropRight = 1.0
@@ -302,50 +295,22 @@ if __name__ == '__main__':
         rotation = 0
 
         if rawRect is not None:
-            # Average height and width of the detected area to get a constant inset
-            insetPixels = ((rawRect[1][0] + rawRect[1][1]) / 2.0) * INSET_PERCENT
-
-            insetRect = (
-                rawRect[0], # Center
-                (rawRect[1][0] - insetPixels, rawRect[1][1] - insetPixels), # Size
-                rawRect[2] # Rotation
-            )
-
-            rect, aspectChanged = correctAspectRatio(insetRect)
-
-            boxWidth = rect[1][0]
-            boxHeight = rect[1][1]
+            rect, aspectChanged = correctAspectRatio(rawRect)
+            print(rect)
+            boxWidth = abs(rect[1][0]-rect[0][0])
+            boxHeight = abs(rect[1][1]-rect[0][1])
 
             box = np.int0(BoxPoints(rect))
-
-
-            # # Create a mask that excludes areas that are probably the directly visible light source
-            # _, wbMask = cv2.threshold(gray, 253, 0, cv2.THRESH_TOZERO)
-            # wbMask = cv2.bitwise_not(wbMask)
-
-            # # Mask out the detected frame - we only want to look at the base film layer
-            # cv2.fillConvexPoly(wbMask, box, 0)
-
-            # # cv2.imshow('image', wbMask )
-            # # cv2.waitKey(0)
-
-            # # bgr = cv2.mean(img, wbMask)
-            # lab = cv2.mean(cv2.cvtColor(img, cv2.COLOR_BGR2LAB), wbMask)
-
-            # # print [i for i in reversed(bgr)]
-            # tint = lab[1] - 127
-            # temperature = lab[2] - 127
-            # print (lab[0]/255.0)*100, temperature, tint
-
-
+            print(box)
             # Lightroom doesn't support rotation more than 45 degrees
             # The detected rect usually includes a 90 degree rotation for landscape images
             rotation = -rect[2]
-
+            
             if rotation > 45:
                 rotation -= 90
-            elif rotation < -90:
-                rotation += 45
+            elif rotation < -45:
+                rotation +=90
+
 
             # Calculate crops in a format for Lightroom (0.0 to 1.0 for each edge)
             centerX = rect[0][0]
@@ -355,10 +320,8 @@ if __name__ == '__main__':
             imgHeight, imgWidth, _  = img.shape
 
             top = []; left = []; right = []; bottom =[]
-
+            
             for point in box:
-                # point = rotateAroundPoint(point, math.radians(rotation))
-
                 if point[0] > centerX:
                     right.append( point[0] )
                 else:
@@ -369,32 +332,43 @@ if __name__ == '__main__':
                 else:
                     top.append( point[1] )
 
-            cropRight = (min(right)) / float(imgWidth)
+            print("right",right)
+            print("shape HW", img.shape)
+            if max(left)<0:
+                rltb=[min(right),max(left),min(bottom),max(top)]
+                rltb=[float(v) for v in rltb]
+                print(rltb)
+                left=[imgWidth-(rltb[1])-rltb[0]]
+                right=[rltb[1]+rltb[0]]
+                bottom=[rltb[2]+rltb[3]]
+                top=[-bottom[0]+imgHeight]
+                print(left,right,bottom,top)
+
+
+
             cropLeft = (max(left)) / float(imgWidth)
-            cropBottom = (min(bottom)) / float(imgHeight)
+            cropRight = (min(right)) / float(imgWidth)
             cropTop = (max(top)) / float(imgHeight)
+            cropBottom = (min(bottom)) / float(imgHeight)
+            
 
             # Draw original detected area
             rawBox = np.int0(BoxPoints(rawRect))
             cv2.drawContours(img, [rawBox], -1, (255, 0, 0), 1)
 
-            # Draw inset area
-            insetBox = np.int0(BoxPoints(insetRect))
-            cv2.drawContours(img, [insetBox], -1, (0, 255, 255), 1)
-
             # Draw adjusted aspect ratio area
-            cv2.drawContours(img, [box], -1, (0, 255, 0), 2)
+            #cv2.drawContours(img, [box], -1, (0, 255, 0), 2)
 
             cv2.circle(img, (int(rect[0][0]), int(rect[0][1])), 3, (0, 255, 0), 3)
+        
 
         # Write result to disk for Lightroom plugin to pick up
-        # (The Lightroom API doesn't appear to allow streaming in output from a program)
         cropData = [
-            cropLeft,
+            cropLeft ,
             cropRight,
             cropTop,
             cropBottom,
-            rotation
+            rotation,
         ]
 
         for v in cropData:
@@ -404,7 +378,3 @@ if __name__ == '__main__':
             out.write("\r\n".join(str(x) for x in cropData))
 
         cv2.imwrite(filename + "-analysis.jpg", img)
-
-        # if hasDisplay:
-        #     cv2.imshow('image', cv2.resize(img, (0,0), fx=0.75, fy=0.75) )
-        #     cv2.waitKey(0)

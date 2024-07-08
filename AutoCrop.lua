@@ -20,7 +20,7 @@ local scriptPath = LrPathUtils.child(_PLUGIN.path, "detect.py")
 
 -- Template string to run Python scripts
 -- (You may need to modify this to point to the right Python binary)
-local pythonCommand = "python __ARGS__"
+local pythonCommand = "/Users/paulroberts/opt/anaconda3/bin/python __ARGS__"
 if WIN_ENV then
   -- Run Python through the Linux sub-system on Windows
   pythonCommand = "bash -c 'DISPLAY=:0 python __ARGS__'"
@@ -144,8 +144,8 @@ function processPhotos(photos)
         LR_renamingTokensOn = true,
         LR_size_doConstrain = true,
         LR_size_doNotEnlarge = true,
-        LR_size_maxHeight = 1500,
-        LR_size_maxWidth = 1500,
+        LR_size_maxHeight = 3000,
+        LR_size_maxWidth = 3000,
         LR_size_units = "pixels",
         LR_tokens = "{{image_name}}",
         LR_useWatermark = false,
@@ -198,7 +198,10 @@ function processPhotos(photos)
       -- The directions/sides here are relative to the image that was processed
       rawData = LrFileUtils.readFile(dataPath)
       cropData = splitLinesToNumbers(rawData)
-
+      
+      log:trace(string.format("Crop Left: %f, Crop Right: %f, Crop Top: %f, Crop Bottom: %f, Crop Angle: %f", cropData[1], cropData[2], cropData[3], cropData[4], cropData[5]))
+      LrDialogs.message("Crop Parameters", string.format("Left: %f\nRight: %f\nTop: %f\nBottom: %f\nAngle: %f, \n rawdata: %s,\n datapath: %s", cropData[1], cropData[2], cropData[3], cropData[4], cropData[5],rawData,dataPath))
+ 
       rawCrop = {
         left = cropData[1],
         right  = cropData[2],
@@ -223,7 +226,7 @@ function processPhotos(photos)
             crop.bottom
           )
         end, {
-          timeout = 2
+          timeout = 500
         })
       end)
 
